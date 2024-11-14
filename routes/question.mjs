@@ -2,6 +2,7 @@ import { Router } from "express";
 import connectionPool from "../utils/db.mjs";
 import validateCreateQuestionPost from "../middlewares/question.validation.mjs";
 import validateQuestionID from "../middlewares/questionID.validation.mjs";
+import { validateQuestionVote } from "../middlewares/vote.validation.mjs";
 
 const questionPostRouter = Router();
 
@@ -65,7 +66,7 @@ questionPostRouter.get(
 
 questionPostRouter.put(
   "/:questionId",
-  [validateCreateQuestionPost],
+  [validateQuestionID],
   async (req, res) => {
     try {
       const updateQuestionIdFromClient = req.params.questionId;
@@ -80,6 +81,14 @@ questionPostRouter.put(
           updatePost.category,
         ]
       );
+
+      const { title, description, category } = req.body;
+      if (!title || !description || !category) {
+        return res.status(400).json({
+          message: "Invalid request data.",
+        });
+      }
+
       return res.status(201).json({
         message: "Question updated successfully.",
       });
@@ -101,12 +110,46 @@ questionPostRouter.delete(
       await connectionPool.query(`delete from questions where id=$1`, [
         deleteIdFromClient,
       ]);
+
       return res.status(200).json({
         message: "Question post has been deleted successfully.",
       });
     } catch (error) {
       return res.status(500).json({
         message: "Unable to delete questions.",
+        error: error.message,
+      });
+    }
+  }
+);
+
+questionPostRouter.post(
+  "/:questionId/vote",
+  [validateQuestionVote],
+  async (req, res) => {
+    try {
+      const { questionId } = req.params;
+      const { vote } = req.body;
+
+      //เพิ่มคะแนน
+      await connectionPool.query(
+        `insert into question_votes (question_id, vote) values ($1, $2)`,
+        [questionId, vote]
+      );
+      await connectionPool.query(
+        `SELECT question_id, SUM(vote) AS total_votes
+      FROM question_votes
+      WHERE question_id = $1
+      GROUP BY question_id`,
+        [questionId]
+      );
+
+      return res.status(200).json({
+        message: "Vote on the question has been recorded successfully.",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        message: "Unable to vote question.",
         error: error.message,
       });
     }
